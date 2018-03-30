@@ -1,34 +1,38 @@
-FROM richarvey/nginx-php-fpm:php5
+FROM php:7.2.3-cli
 
-# add alpine edge repository
-RUN echo http://nl.alpinelinux.org/alpine/edge/main >> /etc/apk/repositories && \
-    echo http://nl.alpinelinux.org/alpine/edge/community >> /etc/apk/repositories && \
-    apk update
+# Install PHP and NPM dependencies
+RUN apt-get update && \
+    apt-get install -y libsqlite3-dev libfreetype6 libfontconfig1 gnupg2 git unzip bzip2 make g++
 
-# install nginx lua nodejs
-RUN apk add --no-cache nginx-lua lua5.1 luarocks5.1 gcc musl-dev libc-dev lua-dev unzip curl nodejs
-RUN luarocks-5.1 install lua-resty-http && luarocks-5.1 install luajwt
+RUN docker-php-ext-install -j$(nproc) pdo_sqlite pdo_mysql && \
+    pecl install -f xdebug && \
+    docker-php-ext-enable xdebug
 
-## install php debug
-##RUN apk add --no-cache php5-xdebug
-
-# Fix PHP.ini
-RUN sed -i s/memory_limit\ =.*/memory_limit\ =\ 2048M/g /etc/php5/php.ini
-
-## download & install composer
+# Install Composer
 RUN curl -sS https://getcomposer.org/installer | php && \
     mv composer.phar /usr/bin/composer
 
-##npm install
-RUN npm install -g bower --unsafe-perm
-RUN npm install -g gulp --unsafe-perm
-RUN npm install -g karma --unsafe-perm
+# Install NodeJS
+RUN curl -sL https://deb.nodesource.com/setup_6.x | bash - && \
+    apt-get install nodejs -y
 
+# NPM Install
+RUN npm install -g bower --unsafe-perm && \
+    npm install --global gulp --unsafe-perm && \
+    npm install -g karma --unsafe-perm
 
-#RUN apk del luarocks5.1 gcc libc-dev lua-dev unzip
+# Fix PHP.ini
+RUN echo 'memory_limit=2048M\n\
+date.timezone=Europe/Paris\n'\
+>> /usr/local/etc/php/php.ini
 
-RUN sed -i s/100M/200M/g /etc/php5/php-fpm.conf
+RUN useradd -r -u 1040 creativedata --create-home
 
-##add right
-ADD execute.sh /execute.sh
-RUN chmod 755 /execute.sh
+RUN mkdir /workspace
+WORKDIR /workspace
+
+ADD build.sh /build.sh
+RUN chmod 755 /build.sh
+
+USER creativedata
+CMD ["/build.sh"]
